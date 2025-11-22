@@ -1,0 +1,14 @@
+name: madhacks
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - pillow
+  - torch
+  - librosa
+  - loguru
+  - follow instructions from https://diff.fish.audio/en/latest/pages/guide.html#preparing-the-environment
+
