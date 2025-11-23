@@ -24,7 +24,7 @@ function Layout(props) {
                     <Navbar.Toggle aria-controls="responsive-navbar-nav" />
                     <Navbar.Collapse id="responsive-navbar-nav" className="justify-content-end">
                     <Nav>
-                        <Button variant="outline-primary" as={Link} to="https://madhacks-fall-2025.devpost.com/" target="_blank" rel="noopener noreferrer" >DevPost </Button>
+                        <Button variant="outline-primary" as={Link} to="https://devpost.com/software/change-this-later-jlru93" target="_blank" rel="noopener noreferrer" >DevPost </Button>
                     </Nav>
                     </Navbar.Collapse>
                 </Container>
