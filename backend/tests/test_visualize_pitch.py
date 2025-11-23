@@ -2,9 +2,15 @@ import librosa
 import numpy as np
 import torch
 from pathlib import Path
+import sys
 from librosa.core import hz_to_mel, mel_frequencies
 from loguru import logger
 from matplotlib import pyplot as plt
+
+# Ensure backend directory (which contains fish_diffusion) is on sys.path
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from fish_diffusion.modules.pitch_extractors import (
     #CrepePitchExtractor,
@@ -28,7 +34,7 @@ mel_freqs = mel_frequencies(n_mels=n_mels, fmin=f_min, fmax=f_max)
 
 # Get the path relative to this test file
 test_dir = Path(__file__).parent
-dataset_path = test_dir.parent.parent / "dataset" / "c-major-scale.mp3"
+dataset_path = test_dir.parent / "dataset" / "just_c_with_blanks.mp3"
 
 audio, sr = librosa.load(
     str(dataset_path),
@@ -60,21 +66,25 @@ extractors = {
     #"Dio": DioPitchExtractor,
 }
 
+images_dir = test_dir.parent / "images"
+images_dir.mkdir(exist_ok=True)  # Create folder if it doesn't exist
+
 fig, axs = plt.subplots(len(extractors), 1, figsize=(10, len(extractors) * 3))
-fig.suptitle("Pitch on mel spectrogram")
+fig.suptitle("Pitch/Mel spectrogram")
 
 if len(extractors) == 1:
     axs = [axs]
 
 for idx, (name, extractor) in enumerate(extractors.items()):
     extra_kwargs = {
-        "keep_zeros": False,
+        "keep_zeros": True,
     }
 
     pitch_extractor = extractor(f0_min=40.0, f0_max=1600, **extra_kwargs).to(device)
-    f0 = pitch_extractor(audio, sr, pad_to=mel.shape[-1]).cpu().numpy()
-    f0 = f_to_mel(f0)
-    f0[f0 <= 0] = float("nan")
+    f0_hz = pitch_extractor(audio, sr, pad_to=mel.shape[-1]).cpu().numpy()
+    f0_hz[f0_hz <= 0] = float("nan")
+    np.save(images_dir / f"{name.lower()}_pitch_hz.npy", f0_hz)
+    f0 = f_to_mel(f0_hz.copy())
     logger.info(f"Got {name} pitch with shape {f0.shape}")
 
     # Find the maximum pitch value (excluding NaN) for y-axis scaling
@@ -111,10 +121,6 @@ for idx, (name, extractor) in enumerate(extractors.items()):
 
 # Adjust layout to ensure labels are visible
 plt.tight_layout()
-
-# Save to images folder - use path relative to test file location
-images_dir = test_dir.parent / "images"
-images_dir.mkdir(exist_ok=True)  # Create folder if it doesn't exist
 
 # Save as PNG
 output_path = images_dir / "pitch.png"
