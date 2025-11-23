@@ -6,7 +6,7 @@ const repoName = 'MadHacksReal'
 
 export default defineConfig({
   plugins: [react()],
-  base: `/${repoName}/`, // required for GitHub Pages
+  base: `/`, // required for GitHub Pages
   build: {
     outDir: '../docs',  // build goes to root/docs
     emptyOutDir: true,  // clears old build files
