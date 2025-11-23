@@ -41,6 +41,17 @@ audio, sr = librosa.load(
     sr=44100,
     mono=True,
 )
+
+# beat tracking
+def get_beat_tempo():
+    audio, sr = librosa.load(
+        str(dataset_path),
+        sr=44100,
+        mono=True,
+    )
+    tempo, _ = librosa.beat.beat_track(y=audio, sr=sr)
+    return tempo
+
 # Store original audio length before converting to tensor
 audio_length = len(audio)
 duration = audio_length / sr  # Duration in seconds
@@ -126,7 +137,6 @@ plt.tight_layout()
 output_path = images_dir / "pitch.png"
 plt.savefig(str(output_path))
 logger.info(f"Saved pitch visualization to {output_path}")
-
 
 # Save figure as numpy array
 fig = plt.gcf()
