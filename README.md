@@ -6,6 +6,7 @@ We were inspired by the lack of free software that transcribes audio files into 
 
 ## What it does
 Our React.JS frontend allows for ```.mp3``` files to be directly uploaded to our backend server which implements the former Fish Diffusion model that cleverly extracts the pitches observed in the recording. We use this data from Fish to understand the [frequency of sounds as musical notes](https://en.wikipedia.org/wiki/Piano_key_frequencies), and process the spacing between notes with OpenCV. From there, we parse all the rests and frequency data to utilize MuScore's Python SDK which creates high quality renditions of sheet music with the necessary time signatures, clef, and accidentals.
+Finally, we utilize a React.js library to take the MIDI file we generated from the transcribed audio file and allow the end-user to hear what the sheet music sounds like, just as an added convenience so they can make sure to match the correct key and all!
 
 ## How we built it
 We used the [Fish Diffusion](https://github.com/fishaudio/fish-diffusion/) framework developed by fish.audio researchers to detect pitch changes and successfully isolate voices and musical instruments as needed for sheet music. 
