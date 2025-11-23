@@ -1,7 +1,8 @@
 import React, { useState, useRef } from "react";
 import { Card, Form, Button, Image, Container } from "react-bootstrap";
 import Loader from "./Loader";
-
+import { Midi } from "@tonejs/midi";
+import * as Tone from "tone";
 
 function UploadComponent(props) {
 
@@ -11,16 +12,60 @@ function UploadComponent(props) {
     const [errorOccured, setErrorOccured] = useState([false, ""]);
     const [imgUrl, setImageUrl] = useState("");
     const tempoRef = useRef(-1); 
+    const [playing, setPlaying] = useState(false);
 
     const handleFileChange = (event) => {
         setFile(event.target.files[0]); 
     };
 
-    const handleClear = (event) => {
+    const handlePlayAudio = async () => {
+        setPlaying(true);
+        setIsLoading(true);
+        
+        try {
+            const response = await fetch("http://127.0.0.1:5000/midi", {
+                method: "GET",
+            });
+            const arrayBuffer = await response.arrayBuffer();
+
+            const midi = new Midi(arrayBuffer);
+            console.log("MIDI object:", midi);
+
+            await Tone.start();
+
+            const synth = new Tone.PolySynth(Tone.Synth).toDestination();
+            const startTime = Tone.now();
+
+            midi.tracks.forEach(track => {
+                track.notes.forEach(note => {
+                    synth.triggerAttackRelease(
+                        note.name,
+                        note.duration,
+                        startTime + note.time,
+                        note.velocity
+                    );
+                });
+            });
+
+            setInputKey(Date.now());
+            setIsLoading(false);
+            setPlaying(false);
+        } catch (error) {
+            alert(`Audio play failed: ${error}`);
+            console.error(error);
+            setFile(null);
+            setIsLoading(false);
+            setInputKey(Date.now());
+            setPlaying(false);
+            return;
+        }
+    };
+
+    const handleClear = async () => {
         setFile(null);
         setErrorOccured([false, ""])
         setInputKey(Date.now());
-        setImageUrl("")
+        setImageUrl("");
         fetch("http://127.0.0.1:5000/delete", {
             method: "POST",
         });        
@@ -100,11 +145,14 @@ function UploadComponent(props) {
         <Card.Footer>We do not train on your data, and we will delete your recording after we are done processing it.</Card.Footer>
         </Card>
         { imgUrl ? 
-        <Card>
-            <Card.Body className="d-flex justify-content-center">
-                <Image width="50%" src={imgUrl} />
-            </Card.Body>
-        </Card>
+        <Container>
+            <Card>
+                <Card.Body className="d-flex justify-content-center">
+                    <Image width="50%" src={imgUrl} />
+                </Card.Body>
+                <Button disabled={playing} onClick={handlePlayAudio} variant="primary">Hear the audio! <i className="bi bi-volume-up fs-6"></i></Button>
+            </Card>
+        </Container>
         :
         <></>
         }
