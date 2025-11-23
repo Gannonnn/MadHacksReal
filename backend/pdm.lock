@@ -3,10 +3,12 @@
 
 [metadata]
 groups = ["default", "dev", "docs"]
-cross_platform = true
-static_urls = false
-lock_version = "4.3"
-content_hash = "sha256:854cfbb310f56a8a727680fe4d49f415cd3295fa3a1903c066df8d7c2a370f9f"
+strategy = ["cross_platform"]
+lock_version = "4.5.0"
+content_hash = "sha256:d74a847dd60e5e191d18cdd1992da290879d53500225cbb9e79cbcaa7d1c0ef8"
+
+[[metadata.targets]]
+requires_python = "~=3.10"
 
 [[package]]
 name = "absl-py"
@@ -350,6 +352,16 @@ summary = "Validate configuration and produce human readable error messages."
 files = [
     {file = "cfgv-3.4.0-py2.py3-none-any.whl", hash = "sha256:b7265b1f29fd3316bfcd2b330d63d024f2bfd8bcb8b0272f8e19a504856c48f9"},
     {file = "cfgv-3.4.0.tar.gz", hash = "sha256:e52591d4c5f5dead8e0f673fb16db7949d2cfb3f7da4582893288f0ded8fe560"},
+]
+
+[[package]]
+name = "chardet"
+version = "5.2.0"
+requires_python = ">=3.7"
+summary = "Universal encoding detector for Python 3"
+files = [
+    {file = "chardet-5.2.0-py3-none-any.whl", hash = "sha256:e1cf59446890a00105fe7b7912492ea04b6e6f06d4b742b2c788469e34c82970"},
+    {file = "chardet-5.2.0.tar.gz", hash = "sha256:1b3b6ff479a8c414bc3fa2c0852995695c4a026dcd6d0633b2dd092ca39c1cf7"},
 ]
 
 [[package]]
@@ -1349,6 +1361,16 @@ files = [
 ]
 
 [[package]]
+name = "jsonpickle"
+version = "4.1.1"
+requires_python = ">=3.8"
+summary = "jsonpickle encodes/decodes any Python object to/from JSON"
+files = [
+    {file = "jsonpickle-4.1.1-py3-none-any.whl", hash = "sha256:bb141da6057898aa2438ff268362b126826c812a1721e31cf08a6e142910dc91"},
+    {file = "jsonpickle-4.1.1.tar.gz", hash = "sha256:f86e18f13e2b96c1c1eede0b7b90095bbb61d99fedc14813c44dc2f361dbbae1"},
+]
+
+[[package]]
 name = "jsonschema"
 version = "4.19.1"
 requires_python = ">=3.8"
@@ -1826,6 +1848,26 @@ files = [
     {file = "multiprocess-0.70.15-py310-none-any.whl", hash = "sha256:7dd58e33235e83cf09d625e55cffd7b0f0eede7ee9223cdd666a87624f60c21a"},
     {file = "multiprocess-0.70.15-py311-none-any.whl", hash = "sha256:134f89053d82c9ed3b73edd3a2531eb791e602d4f4156fc92a79259590bd9670"},
     {file = "multiprocess-0.70.15.tar.gz", hash = "sha256:f20eed3036c0ef477b07a4177cf7c1ba520d9a2677870a4f47fe026f0cd6787e"},
+]
+
+[[package]]
+name = "music21"
+version = "9.7.0"
+requires_python = ">=3.10"
+summary = "A Toolkit for Computer-Aided Musical Analysis and Computational Musicology."
+dependencies = [
+    "chardet",
+    "joblib",
+    "jsonpickle",
+    "matplotlib",
+    "more-itertools",
+    "numpy<2.0.0",
+    "requests",
+    "webcolors>=1.5",
+]
+files = [
+    {file = "music21-9.7.0-py3-none-any.whl", hash = "sha256:2b60421fbe8ecb5ab32e2780ba50de7e321f889880727f5140880d135bcf1e23"},
+    {file = "music21-9.7.0.tar.gz", hash = "sha256:eaf59593a54ea43ae4f723691711bee8eb6a1b18d0f8f6b1fe7ffcd3e5024931"},
 ]
 
 [[package]]
@@ -3927,6 +3969,16 @@ summary = "Measures the displayed width of unicode strings in a terminal"
 files = [
     {file = "wcwidth-0.2.6-py2.py3-none-any.whl", hash = "sha256:795b138f6875577cd91bba52baf9e445cd5118fd32723b460e30a0af30ea230e"},
     {file = "wcwidth-0.2.6.tar.gz", hash = "sha256:a5220780a404dbe3353789870978e472cfe477761f06ee55077256e509b156d0"},
+]
+
+[[package]]
+name = "webcolors"
+version = "25.10.0"
+requires_python = ">=3.10"
+summary = "A library for working with the color formats defined by HTML and CSS."
+files = [
+    {file = "webcolors-25.10.0-py3-none-any.whl", hash = "sha256:032c727334856fc0b968f63daa252a1ac93d33db2f5267756623c210e57a4f1d"},
+    {file = "webcolors-25.10.0.tar.gz", hash = "sha256:62abae86504f66d0f6364c2a8520de4a0c47b80c03fc3a5f1815fedbef7c19bf"},
 ]
 
 [[package]]

@@ -3,6 +3,9 @@ from pathlib import Path
 from backend.tests.test_visualize_pitch import get_beat_tempo
 import numpy as np
 from music21 import stream, note, tempo as m21tempo, meter, duration as m21duration
+from music21 import environment
+us = environment.UserSettings()
+us['musescoreDirectPNGPath'] = '/Applications/MuseScore 3.app/Contents/MacOS/mscore'
 
 class CreateSheetMusic:
     """Loads the saved pitch contour and converts it to frequency-duration pairs."""
@@ -113,7 +116,8 @@ class CreateSheetMusic:
 
     def generate_sheet_music(self, freq_duration_pairs: list[list[float]], tempo: int = -1):
         if tempo == -1:
-            tempo = get_beat_tempo()
+            tempo = 164
+            #tempo = get_beat_tempo()
         s = stream.Stream()
         s.append(m21tempo.MetronomeMark(number=float(tempo)))
         part = stream.Part()
@@ -160,6 +164,7 @@ class CreateSheetMusic:
 
         s.write("musicxml", fp=str(musicxml_fp))
         s.write("midi", fp=str(midi_fp))
+        s.write("musicxml.png", 'music.png')
 
         return musicxml_fp, midi_fp
                 
@@ -188,3 +193,4 @@ if __name__ == "__main__":
 
     pairs = [[131.04, 0.34830000000000005], [147.75, 0.35991000000000006], [165.26, 0.44118000000000007], [174.36, 0.32508000000000015], [194.39, 0.3831300000000001], [221.43, 0.3947400000000002], [248.57, 0.39474000000000015], [260.48, 0.39474000000000015], [250.11, 0.38313000000000014], [223.35, 0.3831300000000001], [200.83, 0.38313], [176.03, 0.3831300000000001], [166.46, 0.38313], [147.13, 0.34830000000000005], [131.02, 0.5688900000000001]]
     musicxml_fp, midi_fp = analyzer.generate_sheet_music(pairs)
+    
