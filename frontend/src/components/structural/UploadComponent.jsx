@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Card, Form, Button } from "react-bootstrap";
+import { Card, Form, Button, Image, Container } from "react-bootstrap";
 import Loader from "./Loader";
 
 
@@ -9,6 +9,7 @@ function UploadComponent(props) {
     const [isLoading, setIsLoading] = useState(null);
     const [inputKey, setInputKey] = useState(Date.now()); 
     const [errorOccured, setErrorOccured] = useState([false, ""]);
+    const [imgUrl, setImageUrl] = useState("");
     const tempoRef = useRef(-1); 
 
     const handleFileChange = (event) => {
@@ -19,6 +20,10 @@ function UploadComponent(props) {
         setFile(null);
         setErrorOccured([false, ""])
         setInputKey(Date.now());
+        setImageUrl("")
+        fetch("http://127.0.0.1:5000/delete", {
+            method: "POST",
+        });        
     }
     
     const handleUpload = async () => {
@@ -40,16 +45,23 @@ function UploadComponent(props) {
         formData.append("file", file);
         
         try {
-            const response = await fetch("https://madhacksreal.onrender.com/upload", {
+            const response = await fetch("http://127.0.0.1:5000/upload", {
                 method: "POST",
                 body: formData,
             });
 
-            const data = await response.json();
-            console.log(data);
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            
+            setImageUrl(url);
+            console.log(url);
+
+            setInputKey(Date.now());
             setIsLoading(false);
         } catch (error) {
             alert(`Upload failed: ${error}`);
+            console.log(error);
+            setFile(null);
             setIsLoading(false);
             setInputKey(Date.now());
             return;
@@ -57,6 +69,7 @@ function UploadComponent(props) {
     };
 
   return (
+    <Container>
     <Card className="bg-body-tertiary">
         <Card.Body>
             <Form.Group controlId="formFileLg" className="mb-3" style={{ textAlign: "center" }}>
@@ -71,18 +84,6 @@ function UploadComponent(props) {
                     />
                 </div>
 
-                {/* <div>
-                    <Form.Label>Tempo</Form.Label>
-                    <Form.Control
-                        style={{ maxWidth: "6rem", margin: "0 auto" }}
-                        placeholder="128"
-                        disabled={true}
-                        key={inputKey + 1}
-                        type="number"
-                        size="md"
-                        ref={tempoRef}
-                    />
-                </div> */}
                 <div style={{marginTop: "1rem"}}>
                     {isLoading ? <Loader /> : <></>}
                     <Button variant="success" onClick={handleUpload} disabled={!file}>
@@ -95,17 +96,19 @@ function UploadComponent(props) {
                 {errorOccured[0] ? <div><span style={{color: "red"}}>{errorOccured[1]}</span></div> : <></>}
                 </div>
             </Form.Group>
-
-            {/* <Form.Group controlId="formFileLg" className="mb-3">
-                <Form.Label>Large file input example</Form.Label>
-                <Form.Control style={{maxWidth: "36rem"}} key={inputKey} type="file" size="md" onChange={handleFileChange} />
-
-                <Form.Label>Tempo</Form.Label>
-                <Form.Control style={{maxWidth: "6rem"}} placeholder="128" disabled={true} key={inputKey+1} type="number" size="md" ref={tempoRef}/>
-            </Form.Group> */}
         </Card.Body>
         <Card.Footer>We do not train on your data, and we will delete your recording after we are done processing it.</Card.Footer>
-    </Card>
+        </Card>
+        { imgUrl ? 
+        <Card>
+            <Card.Body className="d-flex justify-content-center">
+                <Image width="50%" src={imgUrl} />
+            </Card.Body>
+        </Card>
+        :
+        <></>
+        }
+    </Container>
   );
 }
 
