@@ -1,6 +1,6 @@
 // Loader.js
 import React from 'react';
-import { PacmanLoader } from 'react-spinners'
+import { ScaleLoader } from 'react-spinners'
 
 
 
@@ -20,7 +20,7 @@ const Loader = () => {
 
   return (
     <div style={loaderStyle}>
-      <PacmanLoader color="#0d6efd" size="100" animation="border" variant="light" />
+      <ScaleLoader color="#3a72ffff" height="167" width="20" speedMultiplier="0.67" radius="15" animation="border" variant="light" />
     </div>
   );
 };

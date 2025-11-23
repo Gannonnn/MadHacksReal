@@ -7,7 +7,7 @@ import * as Tone from "tone";
 function UploadComponent(props) {
 
     const [file, setFile] = useState(null);
-    const [isLoading, setIsLoading] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
     const [inputKey, setInputKey] = useState(Date.now()); 
     const [errorOccured, setErrorOccured] = useState([false, ""]);
     const [imgUrl, setImageUrl] = useState("");
