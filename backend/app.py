@@ -73,3 +73,14 @@ def handle_file_upload():
             # return redirect(url_for('download_file', name=filename))        
     # else:
     #     abort(405)
+
+
+@app.route('/midi', methods=["GET"])
+def handle_midi():
+    if request.method == "GET":
+        return send_file(
+            "output/sheet_music.mid",
+            mimetype="audio/midi",
+            as_attachment=True,
+            download_name="sheet_music.mid"
+        )
