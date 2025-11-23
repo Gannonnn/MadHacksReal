@@ -34,7 +34,7 @@ mel_freqs = mel_frequencies(n_mels=n_mels, fmin=f_min, fmax=f_max)
 
 # Get the path relative to this test file
 test_dir = Path(__file__).parent
-dataset_path = test_dir.parent / "dataset" / "c-major-scale.mp3"
+dataset_path = test_dir.parent / "dataset" / "67.mp3"
 
 audio, sr = librosa.load(
     str(dataset_path),

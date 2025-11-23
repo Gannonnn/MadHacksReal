@@ -1,13 +1,16 @@
 from pathlib import Path
 import numpy as np
 import cv2
+import math
 from scipy.signal import find_peaks
 from music21 import stream, note, tempo as m21tempo, meter, duration as m21duration
 from music21 import environment
+import music21, shutil
+from tests.test_visualize_pitch import get_beat_tempo
 us = environment.UserSettings()
 us['musescoreDirectPNGPath'] = '/Applications/MuseScore 3.app/Contents/MacOS/mscore'
-
-
+us['directoryScratch'] = 'output'
+#print(us._environment)
 class CreateSheetMusic:
     """Loads the saved pitch contour and converts it to frequency-duration pairs."""
 
@@ -22,7 +25,7 @@ class CreateSheetMusic:
         if not self.pitch_file.exists():
             raise FileNotFoundError(
                 f"Pitch file not found: {self.pitch_file}. Run "
-                "`python backend/tests/test_visualize_pitch.py` first."
+                "`python tests/test_visualize_pitch.py` first."
             )
 
         self.pitch_hz = np.load(self.pitch_file)
@@ -117,7 +120,7 @@ class CreateSheetMusic:
         # A boundary exists between pair i and pair i+1 if pair i ends at a boundary
         i = 0
         while i < len(pairs) - 1:
-            f1 = pairs[i]
+            f1 = pairs[i][0]
             f2, d2 = pairs[i + 1]
 
             # keep rests explicit, only merge rest-rest
@@ -155,7 +158,7 @@ class CreateSheetMusic:
         return pairs
 
 
-    def sobel_edge_detector(self, image_path: Path = Path("backend/images/pitch.png"),
+    def sobel_edge_detector(self, image_path: Path = Path("images/pitch.png"),
     output_name: str = "grey_pitch.png",) -> np.ndarray:
         '''Runs Sobel edge detection on the image and save a grayscale PNG.'''
 
@@ -187,7 +190,7 @@ class CreateSheetMusic:
         return edges
 
 
-    def find_plot_bounds(self, image_path: Path = Path("backend/images/pitch.png")) -> tuple[int, int]:
+    def find_plot_bounds(self, image_path: Path = Path("images/pitch.png")) -> tuple[int, int]:
         '''Detects the left and right bounds of the actual plot area (excluding margins).'''
         image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
         if image is None:
@@ -212,7 +215,7 @@ class CreateSheetMusic:
         return left_edge, right_edge
 
 
-    def find_grey_boundaries(self, image_path: Path = Path("backend/images/grey_pitch.png")) -> list[int]:
+    def find_grey_boundaries(self, image_path: Path = Path("images/grey_pitch.png")) -> list[int]:
         '''Finds the boundaries of the grey image. By looking for vertical lines in the greyscale image.'''
         image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
         if image is None:
@@ -247,14 +250,19 @@ class CreateSheetMusic:
         return boundaries
 
     def generate_sheet_music(self, freq_duration_pairs: list[list[float]], tempo: int = -1):
+        if freq_duration_pairs[0][0] == 0:
+            freq_duration_pairs = freq_duration_pairs[1:]
+        if freq_duration_pairs[len(freq_duration_pairs)-1][0] == 0:
+            freq_duration_pairs = freq_duration_pairs[:-1]
         if tempo == -1:
-            tempo = 164
-            #tempo = get_beat_tempo()
+            tempo = get_beat_tempo()
         s = stream.Stream()
         s.append(m21tempo.MetronomeMark(number=float(tempo)))
         part = stream.Part()
 
         def freq_to_midi_number(freq_hz: float) -> int:
+            if freq_hz == 0:
+                return 0
             return int(round(69 + 12 * math.log2(freq_hz / 440.0)))
 
         # common quarter lengths for quantization
@@ -276,34 +284,39 @@ class CreateSheetMusic:
                 exit(1)
             ql = seconds_to_quarter_length(secs, tempo)
             ql = quantize_quarter_length(ql)
-            # if freq is None or (isinstance(freq, float) and (np.isnan(freq) or freq <= 0)):
-            #     r = note.Rest()
-            #     r.duration = m21duration.Duration(ql)
-            #     part.append(r)
-            # else:
-            midi_num = freq_to_midi_number(float(freq))
-            n = note.Note()
-            n.pitch.midi = midi_num
-            n.duration = m21duration.Duration(ql)
-            part.append(n)
+            if freq == 0:
+                r = note.Rest()
+                r.duration = m21duration.Duration(ql)
+                part.append(r)
+            else:
+                midi_num = freq_to_midi_number(float(freq))
+                n = note.Note()
+                n.pitch.midi = midi_num
+                n.duration = m21duration.Duration(ql)
+                part.append(n)
         
         s.append(part)
 
-        out_dir = Path("backend/output")
+        out_dir = Path("output")
         out_dir.mkdir(parents=True, exist_ok=True)
         musicxml_fp = out_dir / "sheet_music.musicxml"
         midi_fp = out_dir / "sheet_music.mid"
+        image_fp = out_dir / "sheet_music.png"
+        #print(music21.common.__dict__)
+        #shutil.rmtree(music21.environment.getRootTempDir(), ignore_errors=True)
 
-        s.write("musicxml", fp=str(musicxml_fp))
-        s.write("midi", fp=str(midi_fp))
-        s.write("musicxml.png", 'music.png')
+        s.write("musicxml", str(musicxml_fp))
+        s.write("midi", str(midi_fp))
+        s.write("musicxml.png", str(image_fp))
+
+        s.show()
 
         return musicxml_fp, midi_fp
  
         
 
 if __name__ == "__main__":
-    pitch_path = Path("backend/images/parselmouth_pitch_hz.npy")
+    pitch_path = Path("images/parselmouth_pitch_hz.npy")
     analyzer = CreateSheetMusic(pitch_path)
     analyzer.load_pitch()
     print(analyzer.summarize())
@@ -335,7 +348,7 @@ if __name__ == "__main__":
     freq_duration = analyzer.frequency_duration_pairs(frame_breaks=frame_breaks)
     print("Frequency-duration pairs:")
     print(freq_duration)
-
-    pairs = [[131.04, 0.34830000000000005], [147.75, 0.35991000000000006], [165.26, 0.44118000000000007], [174.36, 0.32508000000000015], [194.39, 0.3831300000000001], [221.43, 0.3947400000000002], [248.57, 0.39474000000000015], [260.48, 0.39474000000000015], [250.11, 0.38313000000000014], [223.35, 0.3831300000000001], [200.83, 0.38313], [176.03, 0.3831300000000001], [166.46, 0.38313], [147.13, 0.34830000000000005], [131.02, 0.5688900000000001]]
-    musicxml_fp, midi_fp = analyzer.generate_sheet_music(pairs)
+    
+    #pairs = [[131.04, 0.34830000000000005], [147.75, 0.35991000000000006], [165.26, 0.44118000000000007], [174.36, 0.32508000000000015], [194.39, 0.3831300000000001], [221.43, 0.3947400000000002], [248.57, 0.39474000000000015], [260.48, 0.39474000000000015], [250.11, 0.38313000000000014], [223.35, 0.3831300000000001], [200.83, 0.38313], [176.03, 0.3831300000000001], [166.46, 0.38313], [147.13, 0.34830000000000005], [131.02, 0.5688900000000001]]
+    musicxml_fp, midi_fp = analyzer.generate_sheet_music(freq_duration)
  
