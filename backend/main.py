@@ -2,6 +2,11 @@ from pathlib import Path
 import numpy as np
 import cv2
 from scipy.signal import find_peaks
+from music21 import stream, note, tempo as m21tempo, meter, duration as m21duration
+from music21 import environment
+us = environment.UserSettings()
+us['musescoreDirectPNGPath'] = '/Applications/MuseScore 3.app/Contents/MacOS/mscore'
+
 
 class CreateSheetMusic:
     """Loads the saved pitch contour and converts it to frequency-duration pairs."""
@@ -240,6 +245,61 @@ class CreateSheetMusic:
                 boundaries.append(x)
 
         return boundaries
+
+    def generate_sheet_music(self, freq_duration_pairs: list[list[float]], tempo: int = -1):
+        if tempo == -1:
+            tempo = 164
+            #tempo = get_beat_tempo()
+        s = stream.Stream()
+        s.append(m21tempo.MetronomeMark(number=float(tempo)))
+        part = stream.Part()
+
+        def freq_to_midi_number(freq_hz: float) -> int:
+            return int(round(69 + 12 * math.log2(freq_hz / 440.0)))
+
+        # common quarter lengths for quantization
+        allowed_q = [4.0, 2.0, 1.0, 0.5, 0.25, 0.125, 0.0625]
+
+        def seconds_to_quarter_length(seconds: float, bpm: float) -> float:
+            return seconds / (60.0 / float(bpm))
+
+        def quantize_quarter_length(q: float) -> float:
+            # pick nearest allowed value
+            diffs = [(abs(q - a), a) for a in allowed_q]
+            diffs.sort()
+            nearest_diff, nearest = diffs[0]
+            return nearest
+
+        for freq, secs in freq_duration_pairs:
+            if secs < 0:
+                print("ERROR: negative duration encountered, skipping")
+                exit(1)
+            ql = seconds_to_quarter_length(secs, tempo)
+            ql = quantize_quarter_length(ql)
+            # if freq is None or (isinstance(freq, float) and (np.isnan(freq) or freq <= 0)):
+            #     r = note.Rest()
+            #     r.duration = m21duration.Duration(ql)
+            #     part.append(r)
+            # else:
+            midi_num = freq_to_midi_number(float(freq))
+            n = note.Note()
+            n.pitch.midi = midi_num
+            n.duration = m21duration.Duration(ql)
+            part.append(n)
+        
+        s.append(part)
+
+        out_dir = Path("backend/output")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        musicxml_fp = out_dir / "sheet_music.musicxml"
+        midi_fp = out_dir / "sheet_music.mid"
+
+        s.write("musicxml", fp=str(musicxml_fp))
+        s.write("midi", fp=str(midi_fp))
+        s.write("musicxml.png", 'music.png')
+
+        return musicxml_fp, midi_fp
+ 
         
 
 if __name__ == "__main__":
@@ -275,3 +335,7 @@ if __name__ == "__main__":
     freq_duration = analyzer.frequency_duration_pairs(frame_breaks=frame_breaks)
     print("Frequency-duration pairs:")
     print(freq_duration)
+
+    pairs = [[131.04, 0.34830000000000005], [147.75, 0.35991000000000006], [165.26, 0.44118000000000007], [174.36, 0.32508000000000015], [194.39, 0.3831300000000001], [221.43, 0.3947400000000002], [248.57, 0.39474000000000015], [260.48, 0.39474000000000015], [250.11, 0.38313000000000014], [223.35, 0.3831300000000001], [200.83, 0.38313], [176.03, 0.3831300000000001], [166.46, 0.38313], [147.13, 0.34830000000000005], [131.02, 0.5688900000000001]]
+    musicxml_fp, midi_fp = analyzer.generate_sheet_music(pairs)
+ 
