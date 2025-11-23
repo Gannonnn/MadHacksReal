@@ -13,7 +13,7 @@ function Layout(props) {
                 <Container>
                     <Navbar.Brand as={Link} to="/" className="">
                         <img
-                            alt="replace me later"
+                            alt="sheet diffusions logo with a eigth note and usb symbol"
                             src={logo}
                             width="30"
                             height="30"
