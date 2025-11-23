@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import math
 from scipy.signal import find_peaks
+from scipy.signal import medfilt
 from music21 import stream, note, tempo as m21tempo, meter, duration as m21duration
 from music21 import environment
 import music21, shutil
@@ -47,51 +48,92 @@ class CreateSheetMusic:
             f"Mean freq(Hz): {valid.mean():.2f}"
         )
         return summary
+    
+    def smooth_f0(self, f0_hz: np.ndarray, kernel_size: int = 5) -> np.ndarray:
+        f0 = f0_hz.copy()
+        voiced = ~np.isnan(f0) & (f0 > 0)
+        if voiced.sum() == 0:
+            return f0
+        f0_voiced = f0[voiced]
+        f0[voiced] = medfilt(f0_voiced, kernel_size=kernel_size)
+        return f0
 
     def frequency_duration_pairs(
         self, precision: int = 2, frame_breaks: list[int] | None = None
     ) -> list[list[float]]:
         """
         Returns [[frequency_hz, duration_seconds], ...] for consecutive segments.
-        NaN/0 Hz are treated as rests and encoded with 0 hz
-        Forces splits at frame_breaks (boundaries) to distinguish repeated notes.
-        Merges adjacent pairs with similar frequencies (< 9 Hz difference) only if not separated by boundaries.
+
+        - Uses smoothed f0 from ParselMouth (fish) as input.
+        - Converts to rounded MIDI notes to define segments (cleaner pitches).
+        - NaN/0 Hz are treated as rests and encoded with 0 Hz.
+        - Forces splits at frame_breaks (boundaries) to distinguish repeated notes.
+        - Only merges adjacent rests (and never across boundaries).
         """
         if self.pitch_hz is None:
             raise RuntimeError("Pitch data not loaded yet.")
+        
+        # helper conversions
+        def hz_to_midi(f: float) -> float:
+            return 69 + 12 * math.log2(f / 440.0)
+
+        def midi_to_hz(m: int) -> float:
+            return 440.0 * (2.0 ** ((m - 69) / 12.0))
+        
+        # smooth f0 first for less jitter
+        f0_smoothed = self.smooth_f0(self.pitch_hz)
 
         frame_duration = self.hop_length / self.sr
         pairs: list[list[float]] = []
-        # Track which pairs end at boundaries (should not be merged with next pair)
-        ends_at_boundary: list[bool] = []
+        ends_at_boundary: list[bool] = []  # True if a pair ends at a hard boundary
 
-        current_freq: float | None = None
+        current_midi: int | None = None  # None = rest
         frames_in_segment = 0
 
         # Filter out 0 and n_frames from frame_breaks (they're not real boundaries)
         frame_breaks = sorted(set(frame_breaks or []))
-        frame_breaks = [b for b in frame_breaks if 0 < b < len(self.pitch_hz)]
+        frame_breaks = [b for b in frame_breaks if 0 < b < len(f0_smoothed)]
         
         next_break_idx = 0
         next_break = (
             frame_breaks[next_break_idx] if next_break_idx < len(frame_breaks) else None
         )
 
-        for frame_idx, value in enumerate(self.pitch_hz):
+        for frame_idx, value in enumerate(f0_smoothed):
+            # ----- compute frame MIDI (or rest) -----
             is_rest = np.isnan(value) or value == 0
-            freq = 0.0 if is_rest else round (float(value), precision)
+            if is_rest:
+                frame_midi: int | None = None  # use None to represent rest
+            else:
+                try:
+                    midi_val = hz_to_midi(float(value))
+                    frame_midi = int(round(midi_val))
+                except ValueError:
+                    # safety if value <= 0 or weird
+                    frame_midi = None
+                    is_rest = True
 
-            # Force split at boundary frames
+            # ----- handle forced split at boundary frames -----
             if next_break is not None and frame_idx >= next_break:
-                if current_freq is not None and frames_in_segment > 0:
+                if frames_in_segment > 0:
+                    # close current segment at boundary
+                    if current_midi is None:
+                        freq_hz = 0.0
+                    else:
+                        freq_hz = round(midi_to_hz(current_midi), precision)
                     pairs.append(
-                        [current_freq, round(frames_in_segment * frame_duration, 5)]
+                        [freq_hz, round(frames_in_segment * frame_duration, 5)]
                     )
-                    ends_at_boundary.append(True)  # This pair ends at a boundary
-                current_freq = None
+                    ends_at_boundary.append(True)  # this pair ends at a boundary
+
+                current_midi = None
                 frames_in_segment = 0
-                # Move to next boundary (skip any boundaries we've already passed)
-                while next_break_idx < len(frame_breaks) and frame_idx >= frame_breaks[next_break_idx]:
+
+                # advance to next boundary (skip any we've passed)
+                while (
+                    next_break_idx < len(frame_breaks)
+                    and frame_idx >= frame_breaks[next_break_idx]
+                ):
                     next_break_idx += 1
                 next_break = (
                     frame_breaks[next_break_idx]
@@ -99,63 +141,167 @@ class CreateSheetMusic:
                     else None
                 )
 
-            if current_freq is None:
-                current_freq = freq
+            # ----- normal segmentation by MIDI -----
+            if frames_in_segment == 0:
+                # start new segment
+                current_midi = frame_midi
                 frames_in_segment = 1
-            elif freq == current_freq:
-                frames_in_segment += 1
             else:
-                pairs.append(
-                    [current_freq, round(frames_in_segment * frame_duration, 5)]
-                )
-                ends_at_boundary.append(False)  # Frequency change, not a boundary
-                current_freq = freq
-                frames_in_segment = 1
+                # continue or start new segment depending on MIDI change
+                if frame_midi == current_midi:
+                    frames_in_segment += 1
+                else:
+                    # close previous segment
+                    if current_midi is None:
+                        freq_hz = 0.0
+                    else:
+                        freq_hz = round(midi_to_hz(current_midi), precision)
+                    pairs.append(
+                        [freq_hz, round(frames_in_segment * frame_duration, 5)]
+                    )
+                    ends_at_boundary.append(False)  # regular change, not forced boundary
 
-        if current_freq is not None and frames_in_segment > 0:
-            pairs.append([current_freq, round(frames_in_segment * frame_duration, 5)])
-            ends_at_boundary.append(False)  # Last pair doesn't end at boundary
+                    # start new segment
+                    current_midi = frame_midi
+                    frames_in_segment = 1
 
-        # Merge pairs with similar frequencies, but not across boundaries
-        # A boundary exists between pair i and pair i+1 if pair i ends at a boundary
+        # close last segment
+        if frames_in_segment > 0:
+            if current_midi is None:
+                freq_hz = 0.0
+            else:
+                freq_hz = round(midi_to_hz(current_midi), precision)
+            pairs.append(
+                [freq_hz, round(frames_in_segment * frame_duration, 5)]
+            )
+            ends_at_boundary.append(False)
+
+        # ----- merge adjacent rests only (never across boundaries) -----
         i = 0
         while i < len(pairs) - 1:
-            f1 = pairs[i][0]
+            f1, d1 = pairs[i]
             f2, d2 = pairs[i + 1]
 
-            # keep rests explicit, only merge rest-rest
-            if f1 == 0 and f2 == 0:
-                if ends_at_boundary[i]:
-                    i += 1
-                    continue
-                pairs[i][1] += d2
+            if f1 == 0.0 and f2 == 0.0 and not ends_at_boundary[i]:
+                # merge rest segments
+                pairs[i][1] = d1 + d2
+                # carry boundary info from the second segment if needed
                 if ends_at_boundary[i + 1]:
                     ends_at_boundary[i] = True
                 pairs.pop(i + 1)
                 ends_at_boundary.pop(i + 1)
-                continue
-            if f1 == 0 or f2 == 0:
-                i += 1
-                continue
-
-            # Check if frequencies are similar
-            if abs(f1 - f2) < 9:
-                # Don't merge if pair i ends at a boundary (this means pair i+1 starts after a boundary)
-                if ends_at_boundary[i]:
-                    # Boundary exists between them - don't merge
-                    i += 1
-                else:
-                    # Safe to merge - no boundary between them
-                    pairs[i][1] += d2
-                    # If pair i+1 ended at a boundary, pair i now ends at that boundary
-                    if ends_at_boundary[i + 1]:
-                        ends_at_boundary[i] = True
-                    pairs.pop(i + 1)
-                    ends_at_boundary.pop(i + 1)
             else:
                 i += 1
-        
+
         return pairs
+    # def frequency_duration_pairs(
+    #     self, precision: int = 2, frame_breaks: list[int] | None = None
+    # ) -> list[list[float]]:
+    #     """
+    #     Returns [[frequency_hz, duration_seconds], ...] for consecutive segments.
+    #     NaN/0 Hz are treated as rests and encoded with 0 hz
+    #     Forces splits at frame_breaks (boundaries) to distinguish repeated notes.
+    #     Merges adjacent pairs with similar frequencies (< 9 Hz difference) only if not separated by boundaries.
+    #     """
+    #     if self.pitch_hz is None:
+    #         raise RuntimeError("Pitch data not loaded yet.")
+
+    #     frame_duration = self.hop_length / self.sr
+    #     pairs: list[list[float]] = []
+    #     # Track which pairs end at boundaries (should not be merged with next pair)
+    #     ends_at_boundary: list[bool] = []
+
+    #     current_freq: float | None = None
+    #     frames_in_segment = 0
+
+    #     # Filter out 0 and n_frames from frame_breaks (they're not real boundaries)
+    #     frame_breaks = sorted(set(frame_breaks or []))
+    #     frame_breaks = [b for b in frame_breaks if 0 < b < len(self.pitch_hz)]
+        
+    #     next_break_idx = 0
+    #     next_break = (
+    #         frame_breaks[next_break_idx] if next_break_idx < len(frame_breaks) else None
+    #     )
+
+    #     for frame_idx, value in enumerate(self.pitch_hz):
+    #         is_rest = np.isnan(value) or value == 0
+    #         freq = 0.0 if is_rest else round (float(value), precision)
+
+    #         # Force split at boundary frames
+    #         if next_break is not None and frame_idx >= next_break:
+    #             if current_freq is not None and frames_in_segment > 0:
+    #                 pairs.append(
+    #                     [current_freq, round(frames_in_segment * frame_duration, 5)]
+    #                 )
+    #                 ends_at_boundary.append(True)  # This pair ends at a boundary
+    #             current_freq = None
+    #             frames_in_segment = 0
+    #             # Move to next boundary (skip any boundaries we've already passed)
+    #             while next_break_idx < len(frame_breaks) and frame_idx >= frame_breaks[next_break_idx]:
+    #                 next_break_idx += 1
+    #             next_break = (
+    #                 frame_breaks[next_break_idx]
+    #                 if next_break_idx < len(frame_breaks)
+    #                 else None
+    #             )
+
+    #         if current_freq is None:
+    #             current_freq = freq
+    #             frames_in_segment = 1
+    #         elif freq == current_freq:
+    #             frames_in_segment += 1
+    #         else:
+    #             pairs.append(
+    #                 [current_freq, round(frames_in_segment * frame_duration, 5)]
+    #             )
+    #             ends_at_boundary.append(False)  # Frequency change, not a boundary
+    #             current_freq = freq
+    #             frames_in_segment = 1
+
+    #     if current_freq is not None and frames_in_segment > 0:
+    #         pairs.append([current_freq, round(frames_in_segment * frame_duration, 5)])
+    #         ends_at_boundary.append(False)  # Last pair doesn't end at boundary
+
+    #     # Merge pairs with similar frequencies, but not across boundaries
+    #     # A boundary exists between pair i and pair i+1 if pair i ends at a boundary
+    #     i = 0
+    #     while i < len(pairs) - 1:
+    #         f1 = pairs[i][0]
+    #         f2, d2 = pairs[i + 1]
+
+    #         # keep rests explicit, only merge rest-rest
+    #         if f1 == 0 and f2 == 0:
+    #             if ends_at_boundary[i]:
+    #                 i += 1
+    #                 continue
+    #             pairs[i][1] += d2
+    #             if ends_at_boundary[i + 1]:
+    #                 ends_at_boundary[i] = True
+    #             pairs.pop(i + 1)
+    #             ends_at_boundary.pop(i + 1)
+    #             continue
+    #         if f1 == 0 or f2 == 0:
+    #             i += 1
+    #             continue
+
+    #         # Check if frequencies are similar
+    #         if abs(f1 - f2) < 9:
+    #             # Don't merge if pair i ends at a boundary (this means pair i+1 starts after a boundary)
+    #             if ends_at_boundary[i]:
+    #                 # Boundary exists between them - don't merge
+    #                 i += 1
+    #             else:
+    #                 # Safe to merge - no boundary between them
+    #                 pairs[i][1] += d2
+    #                 # If pair i+1 ended at a boundary, pair i now ends at that boundary
+    #                 if ends_at_boundary[i + 1]:
+    #                     ends_at_boundary[i] = True
+    #                 pairs.pop(i + 1)
+    #                 ends_at_boundary.pop(i + 1)
+    #         else:
+    #             i += 1
+        
+    #     return pairs
 
 
     def sobel_edge_detector(self, image_path: Path = Path("images/pitch.png"),
@@ -250,6 +396,8 @@ class CreateSheetMusic:
         return boundaries
 
     def generate_sheet_music(self, freq_duration_pairs: list[list[float]], tempo: float):
+        if not freq_duration_pairs:
+            raise RuntimeError("No frequency-duration pairs to write; got empty list.")
         if freq_duration_pairs[0][0] == 0:
             freq_duration_pairs = freq_duration_pairs[1:]
         if freq_duration_pairs[len(freq_duration_pairs)-1][0] == 0:
