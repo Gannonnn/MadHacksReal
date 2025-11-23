@@ -37,64 +37,76 @@ class CreateSheetMusic:
         )
         return summary
 
-    def frequency_duration_pairs(self, precision: int = 2) -> list[list[float]]:
+    def frequency_duration_pairs(self, precision: int = 2, merge_threshold_hz: float | None = None, rest_token: str = "REST",) -> list[list[float | str]]:
         """
-        Returns [[frequency_hz, duration_seconds], ...] for consecutive segments.
-        NaN values break segments and are skipped.
+        Returns [[frequency_hz_or_rest_token, duration_seconds], ...] for consecutive segments.
+        Consecutive NaNs become REST segments
+        Consecutive frames of approximatel same frequency become note segments
         """
         if self.pitch_hz is None:
             raise RuntimeError("Pitch data not loaded yet.")
 
         frame_duration = self.hop_length / self.sr
-        pairs: list[list[float]] = []
+        pairs: list[list[float | str]] = []
 
+        current_kind: str | None = None  # "note" or "rest"
         current_freq: float | None = None
         frames_in_segment = 0
 
         for value in self.pitch_hz:
             if np.isnan(value):
-                if current_freq is not None and frames_in_segment > 0:
-                    pairs.append(
-                        [current_freq, round(frames_in_segment * frame_duration, 5)]
-                    )
-                    current_freq = None
+                # in rest frame
+                if current_kind == "note" and frames_in_segment > 0:
+                    # close note
+                    pairs.append([round(current_freq, precision), round(frames_in_segment * frame_duration, 5)])
                     frames_in_segment = 0
-                continue
-
-            freq = round(float(value), precision)
-            if current_freq is None:
-                current_freq = freq
-                frames_in_segment = 1
-            elif freq == current_freq:
+                    current_freq = None
+                current_kind = "rest"
                 frames_in_segment += 1
             else:
-                pairs.append(
-                    [current_freq, round(frames_in_segment * frame_duration, 5)]
-                )
-                current_freq = freq
-                frames_in_segment = 1
+                freq = round(float(value), precision)
 
-        if current_freq is not None and frames_in_segment > 0:
-            pairs.append([current_freq, round(frames_in_segment * frame_duration, 5)])
+                if current_kind == "rest" and frames_in_segment > 0:
+                    # close rest
+                    pairs.append([rest_token, round(frames_in_segment * frame_duration, 5)])
+                    frames_in_segment = 0
+                current_kind = "note"
 
-        #need to chop many pairs off and add their durations to the previous pair
-        #get index of first pair we need, find index of the next pair with a delta_frequecy >= 9
-        #add the duration of the pairs between two indexes, remove them all, then the new index should just be i+1
-        
-        '''MUST  use background colors to distinguish between the same note played twice in a row'''
+                if current_freq is None:
+                    # start new note, begin list
+                    current_freq = freq
+                    frames_in_segment = 1
+                elif freq == current_freq:
+                    # same freq as previous frame, extend segment
+                    frames_in_segment += 1
+                else:
+                    # note changed, close old note, start new one
+                    pairs.append([current_freq, round(frames_in_segment * frame_duration, 5)])
+                    current_freq = freq
+                    frames_in_segment = 1
 
-        #remove pairs with a delta_frequecy < 9
-        i = 0
-        while i < len(pairs) - 1:
-            if abs(pairs[i][0] - pairs[i + 1][0]) < 9:
-                pairs[i][1] += pairs[i + 1][1]
-                pairs.pop(i + 1)
-            else:
+        if frames_in_segment > 0:
+            if current_kind == "note":
+                pairs.append([round(current_freq, precision), round(frames_in_segment * frame_duration, 5)])
+            elif current_kind == "rest":
+                pairs.append([rest_token, round(frames_in_segment * frame_duration, 5)])
+
+        if merge_threshold_hz is not None:
+            i = 0
+            while i < len(pairs) - 1:
+                f1, d1 = pairs[i]
+                f2, d2 = pairs[i + 1]
+
+                if (isinstance(f1, (int, float)) and isinstance(f2, (int, float)) and abs(f1 - f2) < merge_threshold_hz):
+                    pairs [i][1] += d2
+                    pairs.pop(i+1)
+                    continue
+                if f1 == rest_token and f2 == rest_token:
+                    pairs[i][1] += d2
+                    pairs.pop(i + 1)
+                    continue
                 i += 1
-
         return pairs
-
-
         
     def get_background_color(self, freq: float) -> str:
         if freq < 100:
@@ -105,6 +117,8 @@ class CreateSheetMusic:
             return "yellow"
         elif freq < 400:
             return "green"
+        else:
+            return ""
 
 
 if __name__ == "__main__":
