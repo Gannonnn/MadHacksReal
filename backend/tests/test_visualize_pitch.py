@@ -34,7 +34,7 @@ mel_freqs = mel_frequencies(n_mels=n_mels, fmin=f_min, fmax=f_max)
 
 # Get the path relative to this test file
 test_dir = Path(__file__).parent
-dataset_path = test_dir.parent / "dataset" / "just_c_with_blanks.mp3"
+dataset_path = test_dir.parent / "dataset" / "c-major-scale.mp3"
 
 audio, sr = librosa.load(
     str(dataset_path),
@@ -75,6 +75,9 @@ fig.suptitle("Pitch/Mel spectrogram")
 if len(extractors) == 1:
     axs = [axs]
 
+# Store pitch data for reuse
+pitch_data = {}
+
 for idx, (name, extractor) in enumerate(extractors.items()):
     extra_kwargs = {
         "keep_zeros": True,
@@ -86,6 +89,7 @@ for idx, (name, extractor) in enumerate(extractors.items()):
     np.save(images_dir / f"{name.lower()}_pitch_hz.npy", f0_hz)
     f0 = f_to_mel(f0_hz.copy())
     logger.info(f"Got {name} pitch with shape {f0.shape}")
+    pitch_data[name] = f0  # Store for unfiltered plot
 
     # Find the maximum pitch value (excluding NaN) for y-axis scaling
     f0_max_val = np.nanmax(f0)
@@ -100,22 +104,27 @@ for idx, (name, extractor) in enumerate(extractors.items()):
     ax.plot(time_frames, f0, label=name, color="red")
     # Set y-axis limits with 10% padding above max pitch
     ax.set_ylim(0, y_max)
-    # Set y-ticks and labels - use standard spacing every 10 mel bins
-    # Filter to only show ticks within the visible range
-    y_tick_positions = np.arange(0, n_mels + 1, 10)
+    # Generate y-ticks within the visible range
+    # Use smaller spacing (every 3 mel bins) to ensure multiple ticks are visible
+    y_tick_positions = np.arange(0, y_max + 1, 2.7)
     y_tick_positions = y_tick_positions[y_tick_positions <= y_max]
-    y_tick_labels = [str(int(round(mel_freqs[int(pos)]))) for pos in y_tick_positions if int(pos) < len(mel_freqs)]
+    # Convert mel bin positions to Hz values
+    y_tick_labels = []
+    valid_positions = []
+    for pos in y_tick_positions:
+        if int(pos) < len(mel_freqs):
+            y_tick_labels.append(str(int(round(mel_freqs[int(pos)]))))
+            valid_positions.append(pos)
     
-    # Match lengths to ensure positions and labels align
-    min_len = min(len(y_tick_positions), len(y_tick_labels))
-    ax.set_yticks(y_tick_positions[:min_len])
-    ax.set_yticklabels(y_tick_labels[:min_len])
+    # Set ticks and labels
+    ax.set_yticks(valid_positions)
+    ax.set_yticklabels(y_tick_labels)
     # Ensure y-axis is visible on the left
     ax.yaxis.set_ticks_position('left')
     ax.yaxis.set_label_position('left')
     # Make sure ticks are visible
-    ax.tick_params(axis='y', which='major', labelsize=10)
-    ax.set_ylabel("Frequency (Hz)")
+    ax.tick_params(axis='y', which='major', labelsize=10, labelcolor='black')
+    ax.set_ylabel("Frequency (Hz)", fontsize=12)
     ax.set_xlabel("Time (seconds)")
     ax.legend()
 
@@ -137,6 +146,48 @@ fig_array = np.asarray(buf)
 numpy_output_path = images_dir / "pitch.npy"
 np.save(str(numpy_output_path), fig_array)
 logger.info(f"Saved figure as numpy array to {numpy_output_path}")
+
+# ============================================================================
+# Create unfiltered pitch visualization
+# ============================================================================
+fig_unfiltered, axs_unfiltered = plt.subplots(len(extractors), 1, figsize=(10, len(extractors) * 3))
+fig_unfiltered.suptitle("Pitch/Mel spectrogram (Unfiltered)")
+
+if len(extractors) == 1:
+    axs_unfiltered = [axs_unfiltered]
+
+for idx, (name, extractor) in enumerate(extractors.items()):
+    f0 = pitch_data[name]  # Use stored pitch data
+    
+    ax = axs_unfiltered[idx]
+    ax.set_title(name)
+    # Use frame indices for x-axis (default fish-diffusion behavior)
+    ax.imshow(mel, aspect="auto", origin="lower", extent=[0, n_frames, 0, n_mels])
+    # Plot pitch with frame indices on x-axis
+    frame_indices = np.arange(n_frames)
+    ax.plot(frame_indices, f0, label=name, color="red")
+    # Full y-axis range (default fish-diffusion behavior)
+    ax.set_ylim(0, n_mels)
+    # Set y-ticks and labels - use standard spacing every 10 mel bins
+    y_tick_positions = np.arange(0, n_mels + 1, 10)
+    y_tick_labels = [str(int(round(mel_freqs[int(pos)]))) for pos in y_tick_positions if int(pos) < len(mel_freqs)]
+    min_len = min(len(y_tick_positions), len(y_tick_labels))
+    ax.set_yticks(y_tick_positions[:min_len])
+    ax.set_yticklabels(y_tick_labels[:min_len])
+    ax.yaxis.set_ticks_position('left')
+    ax.yaxis.set_label_position('left')
+    ax.tick_params(axis='y', which='major', labelsize=10)
+    ax.set_ylabel("Frequency (Hz)")
+    ax.set_xlabel("Frame")
+    ax.legend()
+
+plt.tight_layout()
+
+# Save unfiltered version
+unfiltered_output_path = images_dir / "unfiltered_pitch.png"
+plt.savefig(str(unfiltered_output_path))
+logger.info(f"Saved unfiltered pitch visualization to {unfiltered_output_path}")
+# ============================================================================
 
 plt.show()
 
